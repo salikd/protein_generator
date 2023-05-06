@@ -1,5 +1,5 @@
 # PROTEIN GENERATOR: Generate sequence-structure pairs with RoseTTAFold
-<img src='http://files.ipd.uw.edu/pub/sequence_diffusion/figs/seqdiff_anim_720p.gif' width='600' style="vertical-align:middle">
+<img src='./utils/figs/seqdiff_anim_720p.gif' width='600' style="vertical-align:middle">
 
 ![gif](http://files.ipd.uw.edu/pub/sequence_diffusion/figs/seqdiff_anim_720p.gif)
 
