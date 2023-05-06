@@ -3,7 +3,7 @@
 
 ![gif](http://files.ipd.uw.edu/pub/sequence_diffusion/figs/seqdiff_anim_720p.gif)
 
-![pic](http://files.ipd.uw.edu/pub/sequence_diffusion/figs/diffusion_landscape.png)
+![pic](./utils/figs/seqdiff_anim_720p.gif)
 
 ## Getting Started
 The easiest way to get started is with [PROTEIN GENERATOR](https://huggingface.co/spaces/merle/PROTEIN_GENERATOR) a HuggingFace space where you can play around with the model!
