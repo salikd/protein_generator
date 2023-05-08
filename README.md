@@ -4,6 +4,8 @@
 ## Getting Started
 The easiest way to get started is with [PROTEIN GENERATOR](https://huggingface.co/spaces/merle/PROTEIN_GENERATOR) a HuggingFace space where you can play around with the model!
 
+And checkout the preprint now live on [bioRxiv](link_to_preprint)
+
 Before running inference you will need to set up a custom conda environment.
 
 Start by creating a new conda environment using the environment.yml file provided in the repository
