@@ -21,9 +21,9 @@ The easiest way to get started is opening the <code>protein_generator.ipynb</cod
 
 <code>python ./inference.py -input_json ./examples/out/design_000000_args.json</code> 
 
+\*note that to get the notebook running you will need to add the custom conda environment as a jupyter kernel, see how to do this [here](https://towardsdatascience.com/get-your-conda-environment-to-show-in-jupyter-notebooks-the-easy-way-17010b76e874)
 
 Check out the templates in the [example folder](examples) to see how you can set up jobs for the various design strategies
-
 
 ## Adding new sequence based potentials
 To add a custom potential to guide the sequence diffusion process toward your desired space, you can add potentials into <code>utils/potentials.py</code>. At the top of the file a template class is provided with functions that are required to implement your potential. It can be helpful to look through the other potentials in this file to see examples of how to implement. At the bottom of the file is a dictionary mapping the name used in the <code>potentials</code> argument to the class name in file. 
@@ -33,9 +33,8 @@ To add a custom potential to guide the sequence diffusion process toward your de
 ## About the model
 PROTEIN GENERATOR is trained on the same dataset and uses the same architecture as RoseTTAFold. To train the model, a ground truth sequence is transformed into an Lx20 continuous space and gaussian noise is added to diffuse the sequence to the sampled timestep. To condition on structure and sequence, the structre for a motif is given and then corresponding sequence is denoised in the input. The rest of the structure is blackhole initialized. For each example the model is trained to predict Xo and losses are applied on the structure and sequence respectively. During training big T is set to 1000 steps, and a square root schedule is used to add noise.
 
-
 ## Looking ahead
-We are excited for the community to get involved writing new potentials and building out the codbase further!
+We are excited for the community to get involved writing new potentials and building out the codebase further!
 
 ## Acknowledgements
-We would like to thank Frank DiMaio and Minkyung Baek who developed RoseTTAFold which allowed us to build out this platform. For other acknowledgements for code and development please see the preprint.
+We would like to thank Frank DiMaio and Minkyung Baek who developed RoseTTAFold which allowed us to build out this platform. Other acknowledgements for code and development please see the preprint.
