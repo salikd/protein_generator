@@ -15,13 +15,11 @@ Once everything has been installed you can download checkpoints:
 - [base checkpoint](http://files.ipd.uw.edu/pub/sequence_diffusion/checkpoints/SEQDIFF_221219_equalTASKS_nostrSELFCOND_mod30.pt)
 - [DSSP + hotspot checkpoint](http://files.ipd.uw.edu/pub/sequence_diffusion/checkpoints/SEQDIFF_230205_dssp_hotspots_25mask_EQtasks_mod30.pt)
 
-You will have to add the checkpoints at the top of the [sampler class](utils/sampler.py)
-
 The easiest way to get started is opening the <code>protein_generator.ipynb</code> notebook and running the sampler class interactively, when ready to submit a production run use the output <code>agrs.json</code> file to launch: 
 
 <code>python ./inference.py -input_json ./examples/out/design_000000_args.json</code> 
 
-\*note that to get the notebook running you will need to add the custom conda environment as a jupyter kernel, see how to do this [here](https://towardsdatascience.com/get-your-conda-environment-to-show-in-jupyter-notebooks-the-easy-way-17010b76e874)
+\* note that to get the notebook running you will need to add the custom conda environment as a jupyter kernel, see how to do this [here](https://towardsdatascience.com/get-your-conda-environment-to-show-in-jupyter-notebooks-the-easy-way-17010b76e874)
 
 Check out the templates in the [example folder](examples) to see how you can set up jobs for the various design strategies
 
