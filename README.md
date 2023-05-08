@@ -9,7 +9,7 @@ And checkout the preprint now live on [bioRxiv](link_to_preprint)
 Before running inference you will need to set up a custom conda environment.
 
 Start by creating a new conda environment using the environment.yml file provided in the repository
-<code>conda create --file environment.yml --name MYENV</code> and activating it <code>source activate MYENV</code>. Please make sure to modify the CUDA version and dgl version accordingly. Please refer to the  [dgl website](https://www.dgl.ai/pages/start.html) for more information.
+<code>conda env create -f environment.yml</code> and activating it <code>source activate seqdiff</code>. Please make sure to modify the CUDA version and dgl version accordingly. Please refer to the  [dgl website](https://www.dgl.ai/pages/start.html) for more information.
 
 Once everything has been installed you can download checkpoints:
 - [base checkpoint](http://files.ipd.uw.edu/pub/sequence_diffusion/checkpoints/SEQDIFF_221219_equalTASKS_nostrSELFCOND_mod30.pt)
