@@ -4,11 +4,10 @@
 ## Getting Started
 The easiest way to get started is with [PROTEIN GENERATOR](https://huggingface.co/spaces/merle/PROTEIN_GENERATOR) a HuggingFace space where you can play around with the model!
 
-Before running inference you will need to set up a custom conda environment (note if you are running this on the digs cluster SE3nv environment can be used).
+Before running inference you will need to set up a custom conda environment.
 
-Start by creating a new environment <code>conda create --name MYENV</code> and activating it <code>source activate MYENV</code>
-
-Next pip install the requirements file <code>pip install -r requirements.txt</code> (note depending on what type of GPU you are on the dgl package required may change see [here](https://www.dgl.ai/pages/start.html))
+Start by creating a new conda environment using the environment.yml file provided in the repository
+<code>conda create --file environment.yml --name MYENV</code> and activating it <code>source activate MYENV</code>. Please make sure to modify the CUDA version and dgl version accordingly. Please refer to the  [dgl website](https://www.dgl.ai/pages/start.html) for more information.
 
 Once everything has been installed you can download checkpoints:
 - [base checkpoint](http://files.ipd.uw.edu/pub/sequence_diffusion/checkpoints/SEQDIFF_221219_equalTASKS_nostrSELFCOND_mod30.pt)
@@ -34,8 +33,7 @@ PROTEIN GENERATOR is trained on the same dataset and uses the same architecture 
 
 
 ## Looking ahead
-We are interested in problems where diffusing in sequence space is useful, if you would like to chat more or join in our effort for sequence diffusion come talk to Sidney or Jake!
+We are excited for the community to get involved writing new potentials and building out the codbase further!
 
 ## Acknowledgements
-A project by Sidney Lisanza and Jake Gershon. Thanks to Sam Tipps for implementing symmetric sequence diffusion. Thank you to Minkyung Baek and Frank Dimaio for developing RoseTTAFold, Joe Watson and David Juergens for the developing inpainting inference script which the inference code is built on top of.
-
+We would like to thank Frank DiMaio and Minkyung Baek who developed RoseTTAFold which allowed us to build out this platform. For other acknowledgements for code and development please see the preprint.

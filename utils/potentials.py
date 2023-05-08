@@ -669,6 +669,23 @@ class ChargeBias(Potential):
             # print(seq)
         return -self.gradients*self.potential_scale
 
+class PSSMbias(Potential):
+
+    def __init__(self, args, features, potential_scale, DEVICE):
+
+        self.features = features
+        self.args = args
+        self.potential_scale = potential_scale
+        self.DEVICE = DEVICE
+        self.PSSM = np.loadtxt(args['PSSM'], delimiter=",", dtype=float)
+        self.PSSM = torch.from_numpy(self.PSSM).to(self.DEVICE)
+
+    def get_gradients(self, seq):
+        print(seq.shape)
+
+
+        return self.PSSM*self.potential_scale
+
 
 ### ADD NEW POTENTIALS INTO LIST DOWN BELOW ###
-POTENTIALS = {'aa_bias':AACompositionalBias, 'charge':ChargeBias, 'hydrophobic':HydrophobicBias}
+POTENTIALS = {'aa_bias':AACompositionalBias, 'charge':ChargeBias, 'hydrophobic':HydrophobicBias, 'PSSM':PSSMbias}

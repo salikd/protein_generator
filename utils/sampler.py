@@ -83,9 +83,8 @@ for param, value in SE3_PARAMS.items():
 MODEL_PARAM['SE3_param_full'] = SE3_param_full
 MODEL_PARAM['SE3_param_topk'] = SE3_param_topk
 
-DEFAULT_CKPT = '/home/jgershon/models/SEQDIFF_221219_equalTASKS_nostrSELFCOND_mod30.pt' #this is the one with good sequences
-LOOP_CHECKPOINT = '/home/jgershon/models/SEQDIFF_221202_AB_NOSTATE_fromBASE_mod30.pt'
-t1d_29_CKPT = '/home/jgershon/models/SEQDIFF_230205_dssp_hotspots_25mask_EQtasks_mod30.pt'
+DEFAULT_CKPT = './SEQDIFF_221219_equalTASKS_nostrSELFCOND_mod30.pt'
+t1d_29_CKPT = './SEQDIFF_230205_dssp_hotspots_25mask_EQtasks_mod30.pt'
 
 class SEQDIFF_sampler:
     
@@ -212,7 +211,8 @@ class SEQDIFF_sampler:
         '''
             get model set up and choose checkpoint
         '''
-        
+       
+
         if self.args['checkpoint'] == None:
             self.args['checkpoint'] = DEFAULT_CKPT
 
@@ -234,7 +234,10 @@ class SEQDIFF_sampler:
         # check to make sure checkpoint chosen exists
         if not os.path.exists(self.args['checkpoint']):
             print('WARNING: couldn\'t find checkpoint')
-            
+        
+        if not os.path.exists(self.args['checkpoint']):
+            raise Exception(f'MODEL NOT FOUND!\nTo down load models please run the following in the main directory:\nwget http://files.ipd.uw.edu/pub/sequence_diffusion/checkpoints/SEQDIFF_230205_dssp_hotspots_25mask_EQtasks_mod30.pt\nwget http://files.ipd.uw.edu/pub/sequence_diffusion/checkpoints/SEQDIFF_221219_equalTASKS_nostrSELFCOND_mod30.pt')
+
         self.ckpt = torch.load(self.args['checkpoint'], map_location=self.DEVICE)
 
         # check to see if [loader_param, model_param, loss_param] is in checkpoint
@@ -374,8 +377,8 @@ class SEQDIFF_sampler:
             elif self.args['trb'] != None:
                 print('Running in partial diffusion mode . . .')
                 self.features['trb_d'] = np.load(self.args['trb'], allow_pickle=True)
-                self.features['mask_str'] = torch.from_numpy(self.features['trb_d']['inpaint_str'])[None,:]
-                self.features['mask_seq'] = torch.from_numpy(self.features['trb_d']['inpaint_seq'])[None,:]
+                self.features['mask_str'] = self.features['trb_d']['inpaint_str'].clone()[None,:]
+                self.features['mask_seq'] = self.features['trb_d']['inpaint_seq'].clone()[None,:]
                 self.features['blank_mask'] = torch.ones(self.features['mask_str'].size()[-1])[None,:].bool()
 
                 self.features['seq'] = torch.from_numpy(self.features['parsed_pdb']['seq'])
@@ -433,18 +436,18 @@ class SEQDIFF_sampler:
                         idx_jump += 200
                     idx_pdb.append(idx_jump+i)
 
-                self.features['idx_pdb'] = torch.tensor(idx_pdb)[none,:]
+                self.features['idx_pdb'] = torch.tensor(idx_pdb)[None,:]
                 conf_1d = torch.ones_like(self.features['seq'])
                 conf_1d[~self.features['mask_str'][0]] = 0
                 self.features['seq_hot'], self.features['msa'], \
-                    self.features['msa_hot'], self.features['msa_extra_hot'], _ = msafeaturize_fixbb(self.features['seq'][none,:],self.loader_params)
-                self.features['t1d'] = templfeaturizefixbb(self.features['seq'], conf_1d=conf_1d)[none,none,:]
+                    self.features['msa_hot'], self.features['msa_extra_hot'], _ = MSAFeaturize_fixbb(self.features['seq'][None,:],self.loader_params)
+                self.features['t1d'] = TemplFeaturizeFixbb(self.features['seq'], conf_1d=conf_1d)[None,None,:]
                 self.features['seq_hot'] = self.features['seq_hot'].unsqueeze(dim=0)
                 self.features['msa'] = self.features['msa'].unsqueeze(dim=0)
                 self.features['msa_hot'] = self.features['msa_hot'].unsqueeze(dim=0)
                 self.features['msa_extra_hot'] = self.features['msa_extra_hot'].unsqueeze(dim=0)
             
-                self.max_t = int(self.args['t']*self.args['sampling_temp'])
+                self.max_t = int(self.args['T']*self.args['sampling_temp'])
             
         # set L
         self.features['L'] = self.features['seq'].shape[0]
@@ -550,12 +553,15 @@ class SEQDIFF_sampler:
         assert (self.features['L']-self.features['cap']*2) % self.features['sym'] == 0, f'symmetry does not match for input length'
         assert x.shape[0] == self.features['L'], f'make sure that dimension 0 of input matches to L'
         
-        n_cap = torch.clone(x[:self.features['cap']])
-        c_cap = torch.clone(x[-self.features['cap']+1:])
-        sym_x = torch.clone(x[self.features['cap']:self.features['sym']]).repeat(self.features['sym'],1)
-        
-        return torch.cat([n_cap,sym_x,c_cap], dim=0)
-        
+        if self.features['cap'] > 0:
+            n_cap = torch.clone(x[:self.features['cap']])
+            c_cap = torch.clone(x[-self.features['cap']+1:])
+            sym_x = torch.clone(x[self.features['cap']:self.features['L']//self.features['sym']]).repeat(self.features['sym'],1)
+            
+            return torch.cat([n_cap,sym_x,c_cap], dim=0)
+        else:
+            return torch.clone(x[:self.features['L']//self.features['sym']]).repeat(self.features['sym'],1)
+
     def predict_x(self):
         '''
             take step using X_t-1 features to predict Xo
@@ -715,11 +721,11 @@ class SEQDIFF_sampler:
             self.features['seq_out'] = torch.permute(self.features['logit_aa_s'][0], (1,0))
             
             # save best seq
-            if self.features['pred_lddt'][~self.features['mask_seq']].mean().item() > self.features['best_plddt']:
+            if self.features['pred_lddt'].mean().item() > self.features['best_plddt']:
                 self.features['best_seq'] = torch.argmax(torch.clone(self.features['seq_out']), dim=-1)
                 self.features['best_pred_lddt'] = torch.clone(self.features['pred_lddt'])
                 self.features['best_xyz'] = torch.clone(self.features['xyz'])
-                self.features['best_plddt'] = self.features['pred_lddt'][~self.features['mask_seq']].mean().item()
+                self.features['best_plddt'] = self.features['pred_lddt'].mean().item()
             
             # self condition on sequence
             self.self_condition_seq()
@@ -748,8 +754,8 @@ class SEQDIFF_sampler:
             
             print(''.join([self.conversion[i] for i in torch.argmax(self.features['seq_out'],dim=-1)]))
             print ("    TIMESTEP [%02d/%02d]   |   current PLDDT: %.4f   <<  >>   best PLDDT: %.4f"%(
-                    self.t+1, self.args['T'], self.features['pred_lddt'][~self.features['mask_seq']].mean().item(), 
-                    self.features['best_pred_lddt'][~self.features['mask_seq']].mean().item()))
+                    self.t+1, self.args['T'], self.features['pred_lddt'].mean().item(), 
+                    self.features['best_pred_lddt'].mean().item()))
         
         # record time
         self.delta_time = time.time() - self.start_time
@@ -844,49 +850,254 @@ class SEQDIFF_sampler:
 ###################### science is cool ##############################
 #####################################################################
 
+# EXTRA SAMPLERS
+class cleavage_foldswitch_SAMPLER(SEQDIFF_sampler):
+    
+    def __init__(self, args=None):
+        super().__init__(args)
 
-# making a custom sampler class for HuggingFace app
-
-class HuggingFace_sampler(SEQDIFF_sampler):
-
-    def model_init(self):
+    def make_dssp_features(self):
         '''
-            get model set up and choose checkpoint
+            set up dssp features
         '''
 
-        if self.args['checkpoint'] == None:
-            self.args['checkpoint'] = DEFAULT_CKPT
+        assert 'child_a_secondary_structure' in self.args.keys() and 'child_b_secondary_structure' in self.args.keys(), \
+               f'You are in cleavage triggered foldswitch mode, please specify dssp features for both children'
+        
+        assert self.args['secondary_structure'] != None, f'You must supply secondary structure features for parent too'
+        
 
-        self.MODEL_PARAM['d_t1d'] = self.args['d_t1d']
+        self.features['secondary_structure'] = [self.dssp_dict[x.upper()] for x in self.args['secondary_structure']]
+        self.features['a_secondary_structure'] = [self.dssp_dict[x.upper()] for x in self.args['child_a_secondary_structure']]
+        self.features['b_secondary_structure'] = [self.dssp_dict[x.upper()] for x in self.args['child_b_secondary_structure']]
 
-        # check to make sure checkpoint chosen exists
-        if not os.path.exists(self.args['checkpoint']):
-            print('WARNING: couldn\'t find checkpoint')
+        self.features['dssp_feat'] = torch.nn.functional.one_hot(torch.tensor(self.features['secondary_structure']),num_classes=4)
+        self.features['a_dssp_feat'] = torch.nn.functional.one_hot(torch.tensor(self.features['a_secondary_structure']),num_classes=4)
+        self.features['b_dssp_feat'] = torch.nn.functional.one_hot(torch.tensor(self.features['b_secondary_structure']),num_classes=4)
+        
+        assert self.features['dssp_feat'].shape[0] == self.features['a_dssp_feat'].shape[0] + self.features['b_dssp_feat'].shape[0],\
+                    f'parent and child dssp sizes must match'
+        
+        self.child_a_len = self.features['a_dssp_feat'].shape[0]
+        
 
-        self.ckpt = torch.load(self.args['checkpoint'], map_location=self.DEVICE)
+    def setup(self, init_model=True):
+        '''
+            run init model and init features to get everything prepped to go into model
+        '''
 
-        # check to see if [loader_param, model_param, loss_param] is in checkpoint
-        #   if so then you are using v2 of inference with t2d bug fixed
-        self.v2_mode = False
-        if 'model_param' in self.ckpt.keys():
-            print('You are running a new v2 model switching into v2 inference mode')
-            self.v2_mode = True
+        # initialize features
+        self.feature_init()
 
-            for k in self.MODEL_PARAM.keys():
-                if k in self.ckpt['model_param'].keys():
-                    self.MODEL_PARAM[k] = self.ckpt['model_param'][k]
-                else:
-                    print(f'no match for {k} in loaded model params')
+        # initialize potential
+        if self.args['potentials'] not in ['', None]:
+            self.potential_init()
+        else:
+            self.potential_list = []
+            self.use_potentials = False
 
-        # make model and load checkpoint
-        print('Loading model checkpoint...')
-        self.model = RoseTTAFoldModule(**self.MODEL_PARAM).to(self.DEVICE)
+        # make hostspot features
+        self.make_hotspot_features()
 
-        model_state = self.ckpt['model_state_dict']
-        self.model.load_state_dict(model_state, strict=False)
-        self.model.eval()
-        print('Successfully loaded model checkpoint')
+        # make dssp features
+        self.make_dssp_features()
 
+        # diffuse sequence and mask features
+        self.features['seq'], self.features['msa_masked'], \
+        self.features['msa_full'], self.features['xyz_t'], self.features['t1d'], \
+        self.features['seq_diffused'] = diff_utils.mask_inputs(self.features['seq_hot'],
+                                                               self.features['msa_hot'],
+                                                               self.features['msa_extra_hot'],
+                                                               self.features['xyz_t'],
+                                                               self.features['t1d'],
+                                                               input_seq_mask=self.features['mask_seq'],
+                                                               input_str_mask=self.features['mask_str'],
+                                                               input_t1dconf_mask=self.features['blank_mask'],
+                                                               diffuser=self.diffuser,
+                                                               t=self.max_t,
+                                                               MODEL_PARAM=self.MODEL_PARAM,
+                                                               hotspots=self.features['hotspot_feat'],
+                                                               dssp=self.features['dssp_feat'],
+                                                               v2_mode=self.v2_mode)
+        
+        # move features to device 
+        self.features['idx_pdb'] = self.features['idx_pdb'].long().to(self.DEVICE, non_blocking=True) # (B, L)
+        self.features['mask_str'] = self.features['mask_str'][None].to(self.DEVICE, non_blocking=True) # (B, L)
+        self.features['xyz_t'] = self.features['xyz_t'][None].to(self.DEVICE, non_blocking=True)
+        self.features['t1d'] = self.features['t1d'][None].to(self.DEVICE, non_blocking=True)
+        self.features['seq'] = self.features['seq'][None].type(torch.float32).to(self.DEVICE, non_blocking=True)
+        self.features['msa'] = self.features['msa'].type(torch.float32).to(self.DEVICE, non_blocking=True)
+        self.features['msa_masked'] = self.features['msa_masked'][None].type(torch.float32).to(self.DEVICE, non_blocking=True)
+        self.features['msa_full'] = self.features['msa_full'][None].type(torch.float32).to(self.DEVICE, non_blocking=True)
+        self.ti_dev =  torsion_indices.to(self.DEVICE, non_blocking=True)
+        self.ti_flip = torsion_can_flip.to(self.DEVICE, non_blocking=True)
+        self.ang_ref = reference_angles.to(self.DEVICE, non_blocking=True)
+        self.features['xyz_prev'] = torch.clone(self.features['xyz_t'][0])
+        self.features['seq_diffused'] = self.features['seq_diffused'][None].to(self.DEVICE, non_blocking=True)
+        
+        # make child a and child b features
+        self.features['a_seq'] = torch.clone(self.features['seq'][...,:self.child_a_len])
+        self.features['b_seq'] = torch.clone(self.features['seq'][...,self.child_a_len:])
+        self.features['a_msa'] = torch.clone(self.features['msa'][...,:self.child_a_len])
+        self.features['b_msa'] = torch.clone(self.features['msa'][...,self.child_a_len:])
+        self.features['a_msa_masked'] = torch.clone(self.features['msa_masked'][:,:,:,:self.child_a_len])
+        self.features['b_msa_masked'] = torch.clone(self.features['msa_masked'][:,:,:,self.child_a_len:])
+        self.features['a_msa_full'] = torch.clone(self.features['msa_full'][:,:,:,:self.child_a_len])
+        self.features['b_msa_full'] = torch.clone(self.features['msa_full'][:,:,:,self.child_a_len:])
+        self.features['a_seq_diffused'] = torch.clone(self.features['seq_diffused'][:,:self.child_a_len])
+        self.features['b_seq_diffused'] = torch.clone(self.features['seq_diffused'][:,self.child_a_len:])
+        self.features['a_idx_pdb'] = torch.clone(self.features['idx_pdb'][:,:self.child_a_len])
+        self.features['b_idx_pdb'] = torch.clone(self.features['idx_pdb'][:,:(self.features['idx_pdb'].shape[1]-self.child_a_len)])
+        self.features['a_mask_seq'] = torch.clone(self.features['mask_seq'][:,:self.child_a_len])
+        self.features['b_mask_seq'] = torch.clone(self.features['mask_seq'][:,self.child_a_len:])
+        self.features['a_mask_str'] = torch.clone(self.features['mask_str'][:,:,:self.child_a_len])
+        self.features['b_mask_str'] = torch.clone(self.features['mask_str'][:,:,self.child_a_len:])
+        self.features['a_xyz_t'] = torch.clone(self.features['xyz_t'][:,:,:self.child_a_len])
+        self.features['b_xyz_t'] = torch.clone(self.features['xyz_t'][:,:,self.child_a_len:])
+        self.features['a_t1d'] = torch.clone(self.features['t1d'][:,:,:self.child_a_len])
+        self.features['b_t1d'] = torch.clone(self.features['t1d'][:,:,self.child_a_len:])
+        self.features['a_xyz_prev'] = torch.clone(self.features['xyz_prev'][:,:self.child_a_len])
+        self.features['b_xyz_prev'] = torch.clone(self.features['xyz_prev'][:,self.child_a_len:])
+        
+        # add secondary structure features for children
+        self.features['a_t1d'][:,:,:,24:28] = self.features['a_dssp_feat']
+        self.features['b_t1d'][:,:,:,24:28] = self.features['b_dssp_feat']
+        
+        self.features['B'], _, self.features['N'], self.features['L'] = self.features['msa'].shape
+        self.features['a_B'], _, self.features['a_N'], self.features['a_L'] = self.features['a_msa'].shape
+        self.features['b_B'], _, self.features['b_N'], self.features['b_L'] = self.features['b_msa'].shape
+        
+        #make t2d
+        self.features['t2d'] = xyz_to_t2d(self.features['xyz_t'])
+        self.features['a_t2d'] = xyz_to_t2d(self.features['a_xyz_t'])
+        self.features['b_t2d'] = xyz_to_t2d(self.features['b_xyz_t'])
+
+        # get alphas
+        self.features['alpha'], self.features['alpha_t'] = diff_utils.get_alphas(self.features['t1d'], self.features['xyz_t'],
+                                                                                 self.features['B'], self.features['L'],
+                                                                                 self.ti_dev, self.ti_flip, self.ang_ref)
+        self.features['a_alpha'], self.features['a_alpha_t'] = diff_utils.get_alphas(self.features['a_t1d'], self.features['a_xyz_t'],
+                                                                                 self.features['a_B'], self.features['a_L'],
+                                                                                 self.ti_dev, self.ti_flip, self.ang_ref)
+        self.features['b_alpha'], self.features['b_alpha_t'] = diff_utils.get_alphas(self.features['b_t1d'], self.features['b_xyz_t'],
+                                                                                 self.features['b_B'], self.features['b_L'],
+                                                                                 self.ti_dev, self.ti_flip, self.ang_ref)
+
+        # processing template coordinates
+        self.features['xyz_t'] = get_init_xyz(self.features['xyz_t'])
+        self.features['a_xyz_t'] = get_init_xyz(self.features['a_xyz_t'])
+        self.features['b_xyz_t'] = get_init_xyz(self.features['b_xyz_t'])
+        self.features['xyz_prev'] = get_init_xyz(self.features['xyz_prev'][:,None]).reshape(self.features['B'], self.features['L'], 27, 3)
+        self.features['a_xyz_prev'] = get_init_xyz(self.features['a_xyz_prev'][:,None]).reshape(self.features['a_B'], self.features['a_L'], 27, 3)
+        self.features['b_xyz_prev'] = get_init_xyz(self.features['b_xyz_prev'][:,None]).reshape(self.features['b_B'], self.features['b_L'], 27, 3)
+
+        # initialize extra features to none
+        self.features['xyz'] = None
+        self.features['a_xyz'] = None
+        self.features['b_xyz'] = None
+        self.features['pred_lddt'] = None
+        self.features['a_pred_lddt'] = None
+        self.features['b_pred_lddt'] = None
+        self.features['logit_s'] = None
+        self.features['a_logit_s'] = None
+        self.features['b_logit_s'] = None
+        self.features['logit_aa_s'] = None
+        self.features['a_logit_aa_s'] = None
+        self.features['b_logit_aa_s'] = None
+        self.features['best_plddt'] = 0
+        self.features['a_best_plddt'] = 0
+        self.features['b_best_plddt'] = 0
+        self.features['best_pred_lddt'] = torch.zeros_like(self.features['mask_str'])[0].float()
+        self.features['a_best_pred_lddt'] = torch.zeros_like(self.features['a_mask_str'])[0].float()
+        self.features['b_best_pred_lddt'] = torch.zeros_like(self.features['b_mask_str'])[0].float()
+        self.features['msa_prev'] = None
+        self.features['a_msa_prev'] = None
+        self.features['b_msa_prev'] = None
+        self.features['pair_prev'] = None
+        self.features['a_pair_prev'] = None
+        self.features['b_pair_prev'] = None
+        self.features['state_prev'] = None
+        self.features['a_state_prev'] = None
+        self.features['b_state_prev'] = None
+    
+    def predict_x(self):
+        '''
+            take step using X_t-1 features to predict Xo
+        '''
+        for prefix in ['','a_','b_']:
+            
+            self.features[f'{prefix}seq'], \
+            self.features[f'{prefix}xyz'], \
+            self.features[f'{prefix}pred_lddt'], \
+            self.features[f'{prefix}logit_s'], \
+            self.features[f'{prefix}logit_aa_s'], \
+            self.features[f'{prefix}alpha'], \
+            self.features[f'{prefix}msa_prev'], \
+            self.features[f'{prefix}pair_prev'], \
+            self.features[f'{prefix}state_prev'] \
+            = diff_utils.take_step_nostate(self.model,
+            self.features[f'{prefix}msa_masked'],
+            self.features[f'{prefix}msa_full'],
+            self.features[f'{prefix}seq'],
+            self.features[f'{prefix}t1d'],
+            self.features[f'{prefix}t2d'],
+            self.features[f'{prefix}idx_pdb'],
+            self.args['n_cycle'],
+            self.features[f'{prefix}xyz_prev'],
+            self.features[f'{prefix}alpha'],
+            self.features[f'{prefix}xyz_t'],
+            self.features[f'{prefix}alpha_t'],
+            self.features[f'{prefix}seq_diffused'],
+            self.features[f'{prefix}msa_prev'],
+            self.features[f'{prefix}pair_prev'],
+            self.features[f'{prefix}state_prev'])
+            
+    def self_condition_seq(self):
+        '''
+            get previous logits and set at t1d template
+        '''
+        self.features['t1d'][:,:,:,:21] = self.features['seq_out'][:,:21]
+    
+    def noise_x(self):
+        '''
+            get X_t-1 from predicted Xo
+        '''
+        # sample x_t-1
+        self.features['post_mean'] = self.diffuser.q_sample(self.features['seq_out'], self.t, DEVICE=self.DEVICE)
+
+        if self.features['sym'] > 1:
+            self.features['post_mean'] = self.symmetrize_seq(self.features['post_mean'])
+
+        # update seq and masks
+        self.features['seq_diffused'][0,~self.features['mask_seq'][0],:21] = self.features['post_mean'][~self.features['mask_seq'][0],...]
+        self.features['seq_diffused'][0,:,21] = 0.0
+
+        # did not know we were clamping seq
+        self.features['seq_diffused'] = torch.clamp(self.features['seq_diffused'], min=-3, max=3)
+
+        # match other features to seq diffused
+        self.features['seq'] = torch.argmax(self.features['seq_diffused'], dim=-1)[None]
+        self.features['msa_masked'][:,:,:,:,:22] = self.features['seq_diffused']
+        self.features['msa_masked'][:,:,:,:,22:44] = self.features['seq_diffused']
+        self.features['msa_full'][:,:,:,:,:22] = self.features['seq_diffused']
+        self.features['t1d'][:1,:,:,22] = 1-int(self.t)/self.args['T']
+        
+        # get clones for children
+        self.features['a_seq'] = torch.clone(self.features['seq'][...,:self.child_a_len])
+        self.features['b_seq'] = torch.clone(self.features['seq'][...,self.child_a_len:])
+        self.features['a_msa'] = torch.clone(self.features['msa'][...,:self.child_a_len])
+        self.features['b_msa'] = torch.clone(self.features['msa'][...,self.child_a_len:])
+        self.features['a_msa_masked'] = torch.clone(self.features['msa_masked'][:,:,:,:self.child_a_len])
+        self.features['b_msa_masked'] = torch.clone(self.features['msa_masked'][:,:,:,self.child_a_len:])
+        self.features['a_msa_full'] = torch.clone(self.features['msa_full'][:,:,:,:self.child_a_len])
+        self.features['b_msa_full'] = torch.clone(self.features['msa_full'][:,:,:,self.child_a_len:])
+        self.features['a_seq_diffused'] = torch.clone(self.features['seq_diffused'][:,:self.child_a_len])
+        self.features['b_seq_diffused'] = torch.clone(self.features['seq_diffused'][:,self.child_a_len:])
+        self.features['a_t1d'][:,:,:,:21] = torch.clone(self.features['t1d'][:,:,:self.child_a_len,:21])
+        self.features['b_t1d'][:,:,:,:21] = torch.clone(self.features['t1d'][:,:,self.child_a_len:,:21])
+        self.features['a_t1d'][:,:,:,22] = 1-int(self.t)/self.args['T']
+        self.features['b_t1d'][:,:,:,22] = 1-int(self.t)/self.args['T']
+        
     def generate_sample(self):
         '''
             sample from the model 
@@ -895,169 +1106,175 @@ class HuggingFace_sampler(SEQDIFF_sampler):
         '''
         # setup example
         self.setup()
-        
+
         # start time
         self.start_time = time.time()
-        
+
         # set up dictionary to save at each step in trajectory
         self.trajectory = {}
-        
+
         # set out prefix
-        print(f'Generating sample {self.out_prefix} ...')
-        
+        self.out_prefix = self.args['out']+f'_{self.design_num:06}'
+        print(f'Generating sample {self.design_num:06} ...')
+
         # main sampling loop
         for j in range(self.max_t):
             self.t = torch.tensor(self.max_t-j-1).to(self.DEVICE)
-            
+
             # run features through the model to get X_o prediction
             self.predict_x()
-            
+
             # save step
             if self.args['save_all_steps']:
                 self.save_step()
-            
+
             # get seq out
             self.features['seq_out'] = torch.permute(self.features['logit_aa_s'][0], (1,0))
+            self.features['a_seq_out'] = torch.permute(self.features['a_logit_aa_s'][0], (1,0))
+            self.features['b_seq_out'] = torch.permute(self.features['b_logit_aa_s'][0], (1,0))
+            
+            # mix seq out for update
+            ab_seq_out = torch.cat([self.features['a_seq_out'], self.features['b_seq_out']], dim=0)
+            self.features['seq_out'] = (self.features['seq_out'] * (1-self.args['mixing'])) + (ab_seq_out * self.args['mixing'])
+            
+            self.features['parent_plddt'] = torch.clone(self.features['pred_lddt'][~self.features['mask_seq']]).mean().item()
+            self.features['child_a_plddt'] = torch.clone(self.features['a_pred_lddt'][~self.features['a_mask_seq']]).mean().item()
+            self.features['child_b_plddt'] = torch.clone(self.features['b_pred_lddt'][~self.features['b_mask_seq']]).mean().item()
+            self.features['mix_plddt'] = self.features['parent_plddt']*(1-self.args['mixing']) + \
+                        (((self.features['child_a_plddt']+self.features['child_b_plddt'])/2)*self.args['mixing'])
             
             # save best seq
-            if self.features['pred_lddt'].mean().item() > self.features['best_plddt']:
+            if self.features['mix_plddt'] > self.features['best_plddt']:
                 self.features['best_seq'] = torch.argmax(torch.clone(self.features['seq_out']), dim=-1)
+                self.features['a_best_seq'] = torch.argmax(torch.clone(self.features['a_seq_out']), dim=-1)
+                self.features['b_best_seq'] = torch.argmax(torch.clone(self.features['b_seq_out']), dim=-1)
                 self.features['best_pred_lddt'] = torch.clone(self.features['pred_lddt'])
+                self.features['a_best_pred_lddt'] = torch.clone(self.features['a_pred_lddt'])
+                self.features['b_best_pred_lddt'] = torch.clone(self.features['b_pred_lddt'])
                 self.features['best_xyz'] = torch.clone(self.features['xyz'])
-                self.features['best_plddt'] = self.features['pred_lddt'][~self.features['mask_seq']].mean().item()
+                self.features['a_best_xyz'] = torch.clone(self.features['a_xyz'])
+                self.features['b_best_xyz'] = torch.clone(self.features['b_xyz'])
+                self.features['best_plddt'] = copy.deepcopy(self.features['mix_plddt'])
+            
             
             # self condition on sequence
             self.self_condition_seq()
-            
+
             # self condition on structure
             if self.args['scheduled_str_cond']:
                 self.self_condition_str_scheduled()
             if self.args['struc_cond_sc']:
                 self.self_condition_str()
-            
+
             # sequence alterations
             if self.args['softmax_seqout']:
                 self.features['seq_out'] = torch.softmax(self.features['seq_out'],dim=-1)*2-1
             if self.args['clamp_seqout']:
-                self.features['seq_out'] = torch.clamp(self.features['seq_out'], 
-                                                       min=-((1/self.diffuser.alphas_cumprod[t])*0.25+5), 
+                self.features['seq_out'] = torch.clamp(self.features['seq_out'],
+                                                       min=-((1/self.diffuser.alphas_cumprod[t])*0.25+5),
                                                        max=((1/self.diffuser.alphas_cumprod[t])*0.25+5))
-            
+
             # apply potentials
             if self.use_potentials:
                 self.apply_potentials()
-            
+
             # noise to X_t-1
             if self.t != 0:
                 self.noise_x()
             
-            print(''.join([self.conversion[i] for i in torch.argmax(self.features['seq_out'],dim=-1)]))
+            print(f'MIX PLDDT: {self.features["mix_plddt"]:.03f}     BEST MIX PLDDT: {self.features["best_plddt"]:.03f}')
+            
+            print('PARENT: '+''.join([self.conversion[i] for i in torch.argmax(self.features['seq_out'],dim=-1)]))
             print ("    TIMESTEP [%02d/%02d]   |   current PLDDT: %.4f   <<  >>   best PLDDT: %.4f"%(
-                    self.t+1, self.args['T'], self.features['pred_lddt'][~self.features['mask_seq']].mean().item(), 
+                    self.t+1, self.args['T'], self.features['pred_lddt'][~self.features['mask_seq']].mean().item(),
                     self.features['best_pred_lddt'][~self.features['mask_seq']].mean().item()))
-        
+            
+            print('CHILD A: '+''.join([self.conversion[i] for i in torch.argmax(self.features['a_seq_out'],dim=-1)]))
+            print ("    TIMESTEP [%02d/%02d]   |   current PLDDT: %.4f   <<  >>   best PLDDT: %.4f"%(
+                    self.t+1, self.args['T'], self.features['a_pred_lddt'][~self.features['a_mask_seq']].mean().item(),
+                    self.features['a_best_pred_lddt'][~self.features['a_mask_seq']].mean().item()))
+            
+            print('CHILD B: '+''.join([self.conversion[i] for i in torch.argmax(self.features['b_seq_out'],dim=-1)]))
+            print ("    TIMESTEP [%02d/%02d]   |   current PLDDT: %.4f   <<  >>   best PLDDT: %.4f"%(
+                    self.t+1, self.args['T'], self.features['b_pred_lddt'][~self.features['b_mask_seq']].mean().item(),
+                    self.features['b_best_pred_lddt'][~self.features['b_mask_seq']].mean().item()))
+            
+            
         # record time
         self.delta_time = time.time() - self.start_time
-        
+
         # save outputs
         self.save_outputs()
-        
+
         # increment design num
         self.design_num += 1
-        
+
         print(f'Finished design {self.out_prefix} in {self.delta_time/60:.2f} minutes.')
     
-    def take_step_get_outputs(self, j):
-        
-        self.t = torch.tensor(self.max_t-j-1).to(self.DEVICE)
-
-        # run features through the model to get X_o prediction
-        self.predict_x()
-
-        # save step
+    def save_outputs(self):
+        '''
+            save the outputs from the model
+        '''
+        # save trajectory
         if self.args['save_all_steps']:
-            self.save_step()
+            fname = f'{self.out_prefix}_trajectory.pt'
+            torch.save(self.trajecotry, fname)
 
-        # get seq out
-        self.features['seq_out'] = torch.permute(self.features['logit_aa_s'][0], (1,0))
-
-        # save best seq
-        if self.features['pred_lddt'].mean().item() > self.features['best_plddt']:
-            self.features['best_seq'] = torch.argmax(torch.clone(self.features['seq_out']), dim=-1)
-            self.features['best_pred_lddt'] = torch.clone(self.features['pred_lddt'])
-            self.features['best_xyz'] = torch.clone(self.features['xyz'])
-            self.features['best_plddt'] = self.features['pred_lddt'].mean().item()
-
+        # get items from best plddt step
+        if self.args['save_best_plddt']:
+            self.features['seq'] = torch.clone(self.features['best_seq'])
+            self.features['a_seq'] = torch.clone(self.features['a_best_seq'])
+            self.features['b_seq'] = torch.clone(self.features['b_best_seq'])
+            self.features['pred_lddt'] = torch.clone(self.features['best_pred_lddt'])
+            self.features['a_pred_lddt'] = torch.clone(self.features['a_best_pred_lddt'])
+            self.features['b_pred_lddt'] = torch.clone(self.features['b_best_pred_lddt'])
+            self.features['xyz'] = torch.clone(self.features['best_xyz'])
+            self.features['a_xyz'] = torch.clone(self.features['a_best_xyz'])
+            self.features['b_xyz'] = torch.clone(self.features['b_best_xyz'])
+            
+        if self.args['match_seqs']:
+            self.features['a_seq'] = torch.clone(self.features['seq'][:self.child_a_len])
+            self.features['b_seq'] = torch.clone(self.features['seq'][self.child_a_len:])
+            
         
-        # WRITE OUTPUT TO GET TEMPORARY PDB TO DISPLAY
-        if self.t != 0:
-            self.features['seq'] = torch.argmax(torch.clone(self.features['seq_out']), dim=-1)
-        else:
-            # prepare final output 
-            if self.args['save_args']:
-                self.save_args()
-
-            # get items from best plddt step
-            if self.args['save_best_plddt']:
-                self.features['seq'] = torch.clone(self.features['best_seq'])
-                self.features['pred_lddt'] = torch.clone(self.features['best_pred_lddt'])
-                self.features['xyz'] = torch.clone(self.features['best_xyz'])
-
         # get chain IDs
         if (self.args['sampling_temp'] == 1.0 and self.args['trb'] == None) or (self.args['sequence'] not in ['',None]):
             chain_ids = [i[0] for i in self.features['pdb_idx']]
         elif self.args['dump_pdb']:
             chain_ids = [i[0] for i in self.features['parsed_pdb']['pdb_idx']]
-
+        
+        a_chain_ids = chain_ids[:self.child_a_len]
+        b_chain_ids = chain_ids[self.child_a_len:]
+        
         # write output pdb
         if len(self.features['seq'].shape) == 2:
             self.features['seq'] = self.features['seq'].squeeze()
-        
-        fname = f'{self.out_prefix}.pdb'
-        
-        write_pdb(fname, self.features['seq'].type(torch.int64),
+            self.features['a_seq'] = self.features['a_seq'].squeeze()
+            self.features['b_seq'] = self.features['b_seq'].squeeze()
+            
+        fname = self.out_prefix + '_parent.pdb'
+        write_pdb(fname,
+                  self.features['seq'].type(torch.int64),
                   self.features['xyz'].squeeze(),
                   Bfacts=self.features['pred_lddt'].squeeze(),
                   chains=chain_ids)
-
-        aa_seq = ''.join([self.conversion[x] for x in self.features['seq'].tolist()])
-
-
-        # self condition on sequence
-        self.self_condition_seq()
-
-        # self condition on structure
-        if self.args['scheduled_str_cond']:
-            self.self_condition_str_scheduled()
-        if self.args['struc_cond_sc']:
-            self.self_condition_str()
-
-        # sequence alterations
-        if self.args['softmax_seqout']:
-            self.features['seq_out'] = torch.softmax(self.features['seq_out'],dim=-1)*2-1
-        if self.args['clamp_seqout']:
-            self.features['seq_out'] = torch.clamp(self.features['seq_out'],
-                                                   min=-((1/self.diffuser.alphas_cumprod[t])*0.25+5),
-                                                   max=((1/self.diffuser.alphas_cumprod[t])*0.25+5))
-
-        # apply potentials
-        if self.use_potentials:
-            self.apply_potentials()
-
-        # noise to X_t-1
-        if self.t != 0:
-            self.noise_x()
-       
-        print(''.join([self.conversion[i] for i in torch.argmax(self.features['seq_out'],dim=-1)]))
-        print ("    TIMESTEP [%02d/%02d]   |   current PLDDT: %.4f   <<  >>   best PLDDT: %.4f"%(
-                self.t+1, self.args['T'], self.features['pred_lddt'][~self.features['mask_seq']].mean().item(),
-                self.features['best_pred_lddt'][~self.features['mask_seq']].mean().item()))
         
-                
-        return aa_seq, fname, self.features['pred_lddt'].mean().item()
-
-    def get_outputs(self):
+        a_fname = self.out_prefix + '_a_child.pdb'
+        write_pdb(a_fname,
+                  self.features['a_seq'].type(torch.int64),
+                  self.features['a_xyz'].squeeze(),
+                  Bfacts=self.features['a_pred_lddt'].squeeze(),
+                  chains=a_chain_ids)
         
-        aa_seq = ''.join([self.conversion[x] for x in self.features['seq'].tolist()])
-        path_to_pdb = self.out_prefix+'.pdb'
-        return aa_seq, path_to_pdb, self.features['pred_lddt'].mean().item() 
+        b_fname = self.out_prefix + '_b_child.pdb'
+        write_pdb(b_fname,
+                  self.features['b_seq'].type(torch.int64),
+                  self.features['b_xyz'].squeeze(),
+                  Bfacts=self.features['b_pred_lddt'].squeeze(),
+                  chains=b_chain_ids)
+
+        if self.args['dump_trb']:
+            self.save_trb()
+
+        if self.args['save_args']:
+            self.save_args()
